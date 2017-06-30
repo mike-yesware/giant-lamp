@@ -1,12 +1,15 @@
+#include <Arduino.h>
+
 /*
-   Chandelier2016 by Daniel Wilson
+    Giant Lamp, heavily based on:
+      Chandelier2016 by Daniel Wilson
 */
 
 #define USE_OCTOWS2811
-#include<OctoWS2811.h>
-#include<FastLED.h>
+#include <OctoWS2811.h>
+#include <FastLED.h>
 #include <Audio.h>
-
+#include <Wire.h>
 
 // global definitions
 #define numStrip 3          // strips are contiguous physical LED chains
@@ -18,9 +21,9 @@
 #define serial Serial       // if USB define as Serial, if Bluetooth define as Serial1 (hardware)
 uint8_t numStrandStrip = numStrand / numStrip; // TODO change to #define as 2?
 
+void checkAndUpdate();
 void runCommand(char);
 void printKnob(float, float);
-void runProgram();
 void helpMenu();
 CHSV twinkle_color( int );
 void twinkle();
@@ -38,8 +41,7 @@ void fadeTempLeds();
 void glitter();
 void rainbowColumns();
 void white();
-void whitePurpleColumns()
-void 
+void whitePurpleColumns();
 
 uint8_t brightness = 128;
 uint8_t maxBrightness = 255;
@@ -55,7 +57,7 @@ char mode = 't'; //start on twinkle mode
 
 //for TwinkleSparkle
 #define COOLING            3         // controls how quickly LEDs dim
-#define TWINKLING          50        // controls how many new LEDs twinkle
+#define TWINKLING          75        // controls how many new LEDs twinkle
 #define FLICKER            50        // controls how "flickery" each individual LED is
 unsigned int seeds =       0;
 unsigned int sparklesEntered =      0;
@@ -64,7 +66,7 @@ static int heat[numLed];
 //for spectrum
 int spins = 0;
 unsigned int theta = 0;
-unsigned int spinSpeed = 5;          //inversely proportional to spin speed
+unsigned int spinSpeed = 15;          //inversely proportional to spin speed
 float maxLevel = 0.0 ;
 unsigned int freqBin, x ;
 float peakLevelSpectrum = 0.0;
@@ -114,7 +116,7 @@ CRGB SparklerColor(int temperature);    // TODO unknown
 
 void setup() {
   currentProgram = &twinkle; //start on twinkle
-  AudioMemory(12);  
+  AudioMemory(12);
   LEDS.addLeds<OCTOWS2811>(showLeds, numLedStrip).setCorrection( TypicalSMD5050 );  // TODO is this the right correction?
   LEDS.setBrightness(brightness);
   serial.begin(57600);
@@ -123,14 +125,19 @@ void setup() {
   {
     timeConstants[i] += offset;
   }
-
 }
 
 void loop() {
   while ( serial.available() > 0 ) {
     runCommand( serial.read() );
   }
-  runProgram();
+  checkAndUpdate();
+  (*currentProgram)();
+}
+
+void checkAndUpdate() {
+  LEDS.setBrightness(brightness);
+  FastLED.show();
 }
 
 void runCommand(char command) {
@@ -247,13 +254,6 @@ void runCommand(char command) {
   }
 }
 
-void runProgram()
-{
-  (*currentProgram)();
-  LEDS.setBrightness(brightness);
-  FastLED.show();
-}
-
 void printKnob(float knobNow, float knobMax)
 {
   serial.print("value is ");
@@ -343,7 +343,7 @@ void sparkle() {
     for ( unsigned int j = 0; j < numLed; j++) {
       showLeds[j] = twinkle_color( heat[j] );
     }
-    FastLED.show();
+    checkAndUpdate();
   }
 }
 
@@ -379,7 +379,7 @@ void spectrum() {
     }
     peakLevelSpectrum = peakLevelSpectrum - peakLevelSpectrum / levelForget;
 
-    //printFFT();
+    // printFFT();
 
     for (int row = 0 ; row < numLedStrand ; row++ )
     {
@@ -403,7 +403,7 @@ void spectrum() {
     }
     spin();
     transform(tempLeds);
-    FastLED.show();
+    checkAndUpdate();
     fadeleds();
   }
 }
@@ -460,7 +460,7 @@ float maxarr(float arr[])
   float maxVal = 0 ;
   for (unsigned int i = 0 ; i < sizeof(arr) ; i++)
   {
-    if (arr[i] > maxVal)  
+    if (arr[i] > maxVal)
     {
       maxVal = arr[i] ;
     }
@@ -475,7 +475,7 @@ void pendulum() {
     float level = 0;
     if (fft.available()) {
       freqBin = 2;
-      for (int freq = 2 ; freq < 34 ; freq++ )
+      for (int freq = 2 ; freq < 7 ; freq++ )
       {
         level = level + fft.read(freqBin, freqBin + frequencyBinsHorizontal[freq] - 1);
       }
@@ -508,12 +508,12 @@ void pendulum() {
       //hue = 64;
     }
     t += bias;
-    //Serial1.print("t = ");
-    //Serial1.println(t);
-    //Serial1.println();
-    //spin();
+    Serial.print("t = ");
+    Serial.println(t);
+    Serial.println();
+    spin();
     transform(leds);
-    FastLED.show();
+    checkAndUpdate();
     fadeleds();
   }
 }
@@ -534,7 +534,7 @@ void fireworks() {
     {
       if (random8() > 250 && random8() > 250)
       {
-        leds[row][column] = CHSV{random(0, 255), random8(), 255};
+        leds[row][column] = CHSV{random8(), random8(), 255};
       }
 
       if (row > 1 && row < numLedStrand - 2 && column > 0 && column < numStrand - 1 )
@@ -587,19 +587,15 @@ void fireworks() {
   transform(leds);
   fadeleds();
   delay(50);
-  //FastLED.show();
 }
 
 void glitter() {
-  unsigned int freqBin, x, y ;
+  unsigned int freqBin;
   float level = 0;
-  float bassLevel = 0;
-  float midLevel = 0;
-  float trebLevel = 0;
 
   if (fft.available()) {
     freqBin = 2;
-    for (int freq = 2 ; freq < 34 ; freq++ )
+    for (int freq = 2 ; freq < 7 ; freq++ )
     {
       level = level + fft.read(freqBin, freqBin + frequencyBinsHorizontal[freq] - 1);
     }
@@ -622,7 +618,7 @@ void glitter() {
     }
     transform(leds);
     fadeleds();
-    FastLED.show();
+    checkAndUpdate();
   }
 }
 
@@ -640,14 +636,14 @@ void rainbowColumns()
     }
     transform(leds);
     delay(20);
-    FastLED.show();
+    checkAndUpdate();
   }
 }
 
 void white()
 {
   fill_solid (showLeds, numLed, CRGB::White);
-  FastLED.show();
+  checkAndUpdate();
 }
 
 extern const TProgmemRGBPalette16 PurpleWhite_p FL_PROGMEM =
@@ -687,8 +683,6 @@ void whitePurpleColumns()
     }
     transform(leds);
     delay(5);
-    FastLED.show();
+    checkAndUpdate();
   }
 }
-
-void 
