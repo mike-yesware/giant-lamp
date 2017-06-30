@@ -43,6 +43,8 @@ void glitter();
 void rainbowColumns();
 void white();
 void whitePurpleColumns();
+void columnsAndRows();
+void america();
 
 uint8_t brightness = 64;
 uint8_t maxBrightness = 255;
@@ -94,6 +96,11 @@ float relativeLevel = 0.0;
 int timeConstants[numStrand] = {
   1, 2, 3, 4, 3, 2
 };
+
+// for America
+#define SPARKLER_SPARKING           240
+#define SPARKLER_CHILL_SPARKING     10
+#define SPARKLER_COOLING            200
 
 //Audio library objects
 AudioInputAnalog         adc1(A14);       //xy=99,55
@@ -241,6 +248,16 @@ void runCommand(char command) {
       currentProgram = &whitePurpleColumns;
       serial.println("White Purple");
       break;
+
+    case 'C':
+      currentProgram = &columnsAndRows;
+      serial.println("Columns and Rows");
+      break;
+
+    case 'A':
+    currentProgram = &america;
+    serial.println("America!");
+    break;
 
     //flourishes
     case '\'':
@@ -663,4 +680,100 @@ void whitePurpleColumns()
     delay(5);
     checkAndUpdate();
   }
+}
+
+void columnsAndRows() {
+  for (int column = 0; column < numStrand; column++)
+  {
+    for (int row = 0; row < numLedStrand; row++)
+    {
+      leds[row][column] = CRGB::White;
+      transform(leds);
+      checkAndUpdate();
+      //delay(10);
+      leds[row][column] = CRGB::Black;
+      fill_solid(showLeds, numLed, CRGB::Black);
+      checkAndUpdate();
+      //delay(20);
+    }
+  }
+
+  for (int row = 0; row < numLedStrand; row++)
+  {
+    for (int column = 0; column < numStrand; column++)
+    {
+      leds[row][column] = CRGB::White;
+      transform(leds);
+      checkAndUpdate();
+      //delay(10);
+      leds[row][column] = CRGB::Black;
+      fill_solid(showLeds, numLed, CRGB::Black);
+      //delay(10);
+      checkAndUpdate();
+    }
+  }
+}
+
+void america()
+{
+  static uint16_t heat[numLed];
+
+  random16_add_entropy(random());
+  checkAndUpdate();
+
+  //Cool down every cell a little
+  for ( int i = 0; i < numLed; i++) {
+    heat[i] = qsub8( heat[i], SPARKLER_COOLING / 255 + 1);
+  }
+
+  // Randomly ignite new 'sparks'
+  if ( random8() / 8 < SPARKLER_SPARKING ) {
+    random16_add_entropy(random());
+    int y = random16(numLed); //y is the position, make sparks in this range
+    heat[y] = qadd8( heat[y], random8(150, 255) ) - 1 ; //the -1 is here because of the 255 == yellow bug
+  }
+
+  // Step 4.  Map from heat cells to LED colors
+  for ( int j = 0; j < numLed; j++)
+  {
+    showLeds[j] = SparklerColor(heat[j]);
+  }
+}
+
+CRGB SparklerColor(int temperature)
+{
+  CRGB heatcolor;
+
+  // Scale 'heat' down from 0-255 to 0-191,
+  // which can then be easily divided into three
+  // equal 'thirds' of 64 units each.
+  uint8_t t192 = scale8_video( temperature, 192);
+
+  // calculate a value that ramps up from
+  // zero to 255 in each 'third' of the scale.
+  uint8_t heatramp = t192 & 0x3F; // 0..63
+  heatramp <<= 2; // scale up to 0..252
+
+  // now figure out which third of the spectrum we're in:
+  if ( t192 & 0x80) {
+    // we're in the hottest third - White
+    heatcolor.r = heatramp; // full red
+    heatcolor.g = heatramp; // full green
+    heatcolor.b = heatramp; // ramp up blue
+
+  }
+  else if ( t192 & 0x40 ) {
+    // we're in the middle third - Red
+    heatcolor.r = heatramp; // full red
+    heatcolor.g = heatramp * 50 / 255; // ramp up green
+    heatcolor.b = heatramp * 25 / 255; // no blue
+
+  }
+  else {
+    // we're in the coolest third - Blue
+    heatcolor.r = heatramp * 20 / 255; // ramp up red
+    heatcolor.g = heatramp * 50 / 255; // no green
+    heatcolor.b = heatramp; // no blue
+  }
+  return heatcolor;
 }
