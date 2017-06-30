@@ -10,6 +10,7 @@
 #include <FastLED.h>
 #include <Audio.h>
 #include <Wire.h>
+#include "palettes.h"
 
 // global definitions
 #define numStrip 3          // strips are contiguous physical LED chains
@@ -43,7 +44,7 @@ void rainbowColumns();
 void white();
 void whitePurpleColumns();
 
-uint8_t brightness = 128;
+uint8_t brightness = 64;
 uint8_t maxBrightness = 255;
 uint8_t increment = 8;
 uint8_t maxKnob = 248;
@@ -645,29 +646,6 @@ void white()
   fill_solid (showLeds, numLed, CRGB::White);
   checkAndUpdate();
 }
-
-extern const TProgmemRGBPalette16 PurpleWhite_p FL_PROGMEM =
-{
-    CRGB::White,
-    CRGB::White,
-    CRGB::Purple,
-    CRGB::Purple,
-
-    CRGB::Purple,
-    CRGB::Purple,
-    CRGB::White,
-    CRGB::White,
-
-    CRGB::White,
-    CRGB::White,
-    CRGB::Purple,
-    CRGB::Purple,
-
-    CRGB::Purple,
-    CRGB::Purple,
-    CRGB::White,
-    CRGB::White,
-};
 
 void whitePurpleColumns()
 {
