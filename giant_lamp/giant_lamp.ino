@@ -10,6 +10,7 @@
 #include <FastLED.h>
 #include <Audio.h>
 #include <Wire.h>
+#include <Bounce2.h>
 #include "palettes.h"
 
 // global definitions
@@ -23,6 +24,7 @@
 uint8_t numStrandStrip = numStrand / numStrip; // TODO change to #define as 2?
 
 void checkAndUpdate();
+void buttonSetup();
 void runCommand(char);
 void printKnob(float, float);
 void helpMenu();
@@ -122,17 +124,64 @@ CRGB tempLeds[numLedStrand][numStrand];  // Same as above
 CRGB showLeds[numLed];                   // Array of total project LEDs
 CRGB SparklerColor(int temperature);    // TODO unknown
 
+// Button settings
+// OctoWS2811 PIN access: 0(RX1), 1(TX1), 23(A), 22(A), 19(A), 18(A), 17(A)
+#define DOWN 0
+#define UP 1
+#define BUTTON_A_PIN 0
+#define BUTTON_B_PIN 1
+#define BUTTON_DEBOUNCE_INTERVAL 10  // ms
+#define BUTTON_LONG_PRESS_DELAY 1000  // ms
+#define BUTTON_LONG_PRESS_INTERVAL 100  // ms
+
+Bounce buttonA = Bounce();
+Bounce buttonB = Bounce();
+
+boolean buttonAState = UP;
+boolean buttonALongPressState = UP;
+boolean buttonBState = UP;
+boolean buttonBLongPressState = UP;
+
+elapsedMillis buttonAPressedMillis;
+unsigned long buttonAPressedTimeStamp;
+elapsedMillis buttonALongPressedMillis;
+unsigned long buttonALongPressedTimeStamp;
+
+elapsedMillis buttonBPressedMillis;
+unsigned long buttonBPressedTimeStamp;
+elapsedMillis buttonBLongPressedMillis;
+unsigned long buttonBLongPressedTimeStamp;
+
+
 void setup() {
+  buttonSetup();
+
   currentProgram = &twinkle; //start on twinkle
+
   AudioMemory(12);
+
   LEDS.addLeds<OCTOWS2811>(showLeds, numLedStrip).setCorrection( TypicalSMD5050 );  // TODO is this the right correction?
   LEDS.setBrightness(brightness);
+
   serial.begin(57600);
+
   pinMode(led, OUTPUT);
+
   for (int i = 0; i < numStrand; i++)  // Loop over each strand
   {
     timeConstants[i] += offset;
   }
+}
+
+void buttonSetup() {
+  pinMode(BUTTON_A_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_B_PIN, INPUT_PULLUP);
+
+  buttonA.attach(BUTTON_A_PIN);
+  buttonB.attach(BUTTON_B_PIN);
+
+  buttonA.interval(BUTTON_DEBOUNCE_INTERVAL);
+  buttonB.interval(BUTTON_DEBOUNCE_INTERVAL);
 }
 
 void loop() {
@@ -144,6 +193,46 @@ void loop() {
 }
 
 void checkAndUpdate() {
+  bool buttonAChanged = buttonA.update();
+  bool buttonBChanged = buttonB.update();
+
+  if ( buttonAChanged ) {
+    int buttonAValue = buttonA.read();
+    serial.print("Button A changed to ");
+    serial.println(buttonAValue);
+
+    if ( buttonAValue == DOWN ) {
+      buttonAPressedMillis = 0;
+      buttonAState = DOWN;
+      buttonAPressedTimeStamp = millis();
+
+    } else if (buttonAValue == UP ) {
+      buttonAState = UP;
+      buttonALongPressState = UP;
+
+      serial.print("Button A held for ");
+      serial.print(buttonAPressedMillis);
+      serial.println("ms");
+    }
+  }
+
+  if (buttonAState == DOWN  && buttonALongPressState != DOWN) {
+    if ( millis() - buttonAPressedTimeStamp >= BUTTON_LONG_PRESS_DELAY ) {
+      buttonALongPressState = DOWN;
+      buttonALongPressedTimeStamp = millis();
+
+      serial.println("Button A was long pressed");
+    }
+  }
+
+  if (buttonALongPressState == DOWN) {
+    if ( millis() - buttonALongPressedTimeStamp >= BUTTON_LONG_PRESS_INTERVAL ) {
+      buttonALongPressedTimeStamp = millis();
+      serial.println("Button A long event triggered");
+      //TODO use fucntion poitner for current sketch longpress function on button B??
+    }
+  }
+
   LEDS.setBrightness(brightness);
   FastLED.show();
 }
