@@ -25,6 +25,8 @@ uint8_t numStrandStrip = numStrand / numStrip; // TODO change to #define as 2?
 
 void checkAndUpdate();
 void buttonSetup();
+void incrementCurrentKnob();
+void decrementCurrentKnob();
 void runCommand(char);
 void printKnob(float, float);
 void helpMenu();
@@ -48,10 +50,10 @@ void whitePurpleColumns();
 void columnsAndRows();
 void america();
 
-uint8_t brightness = 64;
+uint8_t brightness = 128;
 uint8_t maxBrightness = 255;
-uint8_t increment = 8;
-uint8_t maxKnob = 248;
+uint8_t increment = 4;
+uint8_t maxKnob = 255;
 
 uint8_t* currentKnob = &brightness;  //this is a knob pointer that points to the value I want to increment
 void (*currentProgram)();            //this is a function pointer that points to the animation I want to run
@@ -134,7 +136,7 @@ CRGB SparklerColor(int temperature);    // TODO unknown
 #define BUTTON_B_LED_PIN 22
 #define BUTTON_DEBOUNCE_INTERVAL 10  // ms
 #define BUTTON_LONG_PRESS_DELAY 1000  // ms
-#define BUTTON_LONG_PRESS_INTERVAL 100  // ms
+#define BUTTON_LONG_PRESS_INTERVAL 50  // ms
 
 Bounce buttonA = Bounce();
 Bounce buttonB = Bounce();
@@ -143,6 +145,7 @@ boolean buttonAState = UP;
 boolean buttonALongPressState = UP;
 boolean buttonBState = UP;
 boolean buttonBLongPressState = UP;
+boolean buttonABLongPressState = UP;
 
 elapsedMillis buttonAPressedMillis;
 unsigned long buttonAPressedTimeStamp;
@@ -154,6 +157,8 @@ unsigned long buttonBPressedTimeStamp;
 elapsedMillis buttonBLongPressedMillis;
 unsigned long buttonBLongPressedTimeStamp;
 
+elapsedMillis buttonABLongPressedMillis;
+unsigned long buttonABLongPressedTimeStamp;
 
 void setup() {
   buttonSetup();
@@ -173,6 +178,8 @@ void setup() {
   {
     timeConstants[i] += offset;
   }
+
+  delay(1000); // 1 sec boot delay
 }
 
 void buttonSetup() {
@@ -216,6 +223,7 @@ void checkAndUpdate() {
     } else if (buttonAValue == UP ) {
       buttonAState = UP;
       buttonALongPressState = UP;
+      buttonABLongPressState = UP;
 
       serial.print("Button A held for ");
       serial.print(buttonAPressedMillis);
@@ -236,6 +244,7 @@ void checkAndUpdate() {
     } else if (buttonBValue == UP ) {
       buttonBState = UP;
       buttonBLongPressState = UP;
+      buttonABLongPressState = UP;
 
       serial.print("Button B held for ");
       serial.print(buttonBPressedMillis);
@@ -243,7 +252,7 @@ void checkAndUpdate() {
     }
   }
 
-  if (buttonAState == DOWN  && buttonALongPressState != DOWN) {
+  if (buttonAState == DOWN && buttonALongPressState != DOWN && buttonBState != DOWN) {
     if ( millis() - buttonAPressedTimeStamp >= BUTTON_LONG_PRESS_DELAY ) {
       buttonALongPressState = DOWN;
       buttonALongPressedTimeStamp = millis();
@@ -252,7 +261,7 @@ void checkAndUpdate() {
     }
   }
 
-  if (buttonBState == DOWN  && buttonBLongPressState != DOWN) {
+  if (buttonBState == DOWN && buttonBLongPressState != DOWN && buttonAState != DOWN) {
     if ( millis() - buttonBPressedTimeStamp >= BUTTON_LONG_PRESS_DELAY ) {
       buttonBLongPressState = DOWN;
       buttonBLongPressedTimeStamp = millis();
@@ -261,19 +270,30 @@ void checkAndUpdate() {
     }
   }
 
+  if (buttonAState == DOWN && buttonBState == DOWN && buttonABLongPressState) {
+    if ( millis() - buttonBPressedTimeStamp >= BUTTON_LONG_PRESS_DELAY ) {
+      buttonABLongPressState = DOWN;
+      buttonABLongPressedTimeStamp = millis();
+
+      serial.println("Both buttons were long pressed");
+    }
+  }
+
   if (buttonALongPressState == DOWN) {
     if ( millis() - buttonALongPressedTimeStamp >= BUTTON_LONG_PRESS_INTERVAL ) {
       buttonALongPressedTimeStamp = millis();
+
+      decrementCurrentKnob();
       serial.println("Button A long event triggered");
-      //TODO use fucntion poitner for current sketch longpress function on button B??
     }
   }
 
   if (buttonBLongPressState == DOWN) {
     if ( millis() - buttonBLongPressedTimeStamp >= BUTTON_LONG_PRESS_INTERVAL ) {
       buttonBLongPressedTimeStamp = millis();
+
+      incrementCurrentKnob();
       serial.println("Button B long event triggered");
-      //TODO use fucntion poitner for current sketch longpress function on button B??
     }
   }
 
@@ -281,46 +301,52 @@ void checkAndUpdate() {
   FastLED.show();
 }
 
+void incrementCurrentKnob() {
+  if (*currentKnob >= (maxBrightness - increment) && currentKnob == &brightness ) {
+    *currentKnob = maxBrightness ;
+  }
+  else if (*currentKnob >= maxKnob ) {
+    *currentKnob = maxKnob ;
+  }
+  else {
+    *currentKnob += increment ;
+  }
+
+  if (currentKnob == &brightness ) {
+    printKnob(*currentKnob, maxBrightness);
+  }
+  else {
+    printKnob(*currentKnob, maxKnob);
+  }
+}
+
+void decrementCurrentKnob() {
+  if (*currentKnob <= increment) {
+    *currentKnob = 2 ;
+  }
+  else {
+    *currentKnob -= increment ;
+  }
+
+  if (currentKnob == &brightness ) {
+    printKnob(*currentKnob, maxBrightness);
+  }
+  else {
+    printKnob(*currentKnob, maxKnob);
+  }
+}
+
 void runCommand(char command) {
   switch (command)
   {
     case '+':
     case '=':
-      if (*currentKnob >= maxBrightness && currentKnob == &brightness ) {
-        *currentKnob = maxBrightness ;
-      }
-
-      else if (*currentKnob >= maxKnob ) {
-        *currentKnob = maxKnob ;
-      }
-
-      else {
-        *currentKnob += increment ;
-      }
-
-      if (currentKnob == &brightness ) {
-        printKnob(*currentKnob, maxBrightness);
-      }
-      else {
-        printKnob(*currentKnob, maxKnob);
-      }
+      incrementCurrentKnob();
       break;
 
     case '-':
     case '_':
-      if (*currentKnob == 0) {
-        *currentKnob = 0 ;
-      }
-      else {
-        *currentKnob -= increment ;
-      }
-
-      if (currentKnob == &brightness ) {
-        printKnob(*currentKnob, maxBrightness);
-      }
-      else {
-        printKnob(*currentKnob, maxKnob);
-      }
+      decrementCurrentKnob();
       break;
 
     case 'b':
