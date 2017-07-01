@@ -23,15 +23,17 @@
 #define serial Serial       // if USB define as Serial, if Bluetooth define as Serial1 (hardware)
 uint8_t numStrandStrip = numStrand / numStrip; // TODO change to #define as 2?
 
+// General defs
 void checkAndUpdate();
 void buttonSetup();
 void incrementCurrentKnob();
 void decrementCurrentKnob();
+void changeProgram();
 void runCommand(char);
 void printKnob(float, float);
 void helpMenu();
+void black();
 CHSV twinkle_color( int );
-void twinkle();
 void sparkle();
 float maxarr(float arr[]);
 void computeVerticalLevels();
@@ -39,13 +41,15 @@ void transform(CRGB ledMatrix[numLedStrand][numStrand]);
 void spin();
 void printFFT();
 void fadeleds();
+void fadeTempLeds();
+
+// Program defs
+void twinkle();
 void spectrum();
 void pendulum();
 void fireworks();
-void fadeTempLeds();
 void glitter();
 void rainbowColumns();
-void white();
 void whitePurpleColumns();
 void columnsAndRows();
 void america();
@@ -55,10 +59,25 @@ uint8_t maxBrightness = 255;
 uint8_t increment = 4;
 uint8_t maxKnob = 255;
 
-uint8_t* currentKnob = &brightness;  //this is a knob pointer that points to the value I want to increment
-void (*currentProgram)();            //this is a function pointer that points to the animation I want to run
+uint8_t* currentKnob = &brightness;  // this is a knob pointer that points to the value I want to increment
+typedef void(*FunctionPointer)();    // function pointer type
+bool programChanged;                 // flag that a program change has occured
+#define PROGRAM_COUNT 9              // number of programs in total
+FunctionPointer currentProgram;      // this is a function pointer that points to the animation I want to run
+int currentProgramIndex;             // Index of the current running program in the programs array
+FunctionPointer programs[PROGRAM_COUNT] = {
+  twinkle,
+  spectrum,
+  pendulum,
+  fireworks,
+  glitter,
+  rainbowColumns,
+  whitePurpleColumns,
+  columnsAndRows,
+  america
+}; // Function pointer array of all programs
 
-CRGB currentColor = CRGB::Green ;
+CRGB currentColor = CRGB::Green;
 
 char mode = 't'; //start on twinkle mode
 
@@ -163,7 +182,8 @@ unsigned long buttonABLongPressedTimeStamp;
 void setup() {
   buttonSetup();
 
-  currentProgram = &twinkle; //start on twinkle
+  currentProgramIndex = 0;   // start on twinkle  |  Note that these need to
+  currentProgram = &twinkle; // start on twinkle  |  stay in sync!!
 
   AudioMemory(12);
 
@@ -203,6 +223,11 @@ void loop() {
     runCommand( serial.read() );
   }
   checkAndUpdate();
+
+  if ( programChanged ) {
+    black();
+    programChanged = false;
+  }
   (*currentProgram)();
 }
 
@@ -228,6 +253,12 @@ void checkAndUpdate() {
       serial.print("Button A held for ");
       serial.print(buttonAPressedMillis);
       serial.println("ms");
+
+      if ( buttonAPressedMillis < BUTTON_LONG_PRESS_DELAY ) {
+        serial.println("Button A short press triggered");
+
+        changeProgram();
+      }
     }
   }
 
@@ -336,6 +367,18 @@ void decrementCurrentKnob() {
   }
 }
 
+void changeProgram() {
+  if ( currentProgramIndex == PROGRAM_COUNT - 1) {  // Subtract one to account for 0 based arrays
+    currentProgramIndex = 0;
+  }
+  else {
+    currentProgramIndex++;
+  }
+
+  programChanged = true;
+  currentProgram = programs[currentProgramIndex];
+}
+
 void runCommand(char command) {
   switch (command)
   {
@@ -376,14 +419,7 @@ void runCommand(char command) {
       break;
 
     case 'F':
-      for (int column = 0; column < numStrand; column++)
-      {
-        for (int row = 0; row < numLedStrand; row++)
-        {
-          leds[row][column] = CRGB::Black;
-          //tempLeds[row][column] = CRGB::Black;
-        }
-      }
+      black();
       currentProgram = &fireworks;
       serial.println("Fireworks");
       break;
@@ -398,9 +434,9 @@ void runCommand(char command) {
       serial.println("Rainbow");
       break;
 
-    case 'W':
-      currentProgram = &white;
-      serial.println("White");
+    case 'B':
+      currentProgram = &black;
+      serial.println("Black");
       break;
 
     case 'Q':
@@ -464,6 +500,19 @@ void helpMenu()
   serial.println(" + increase");
   serial.println(" - decrease");
   serial.println("------------------------");
+}
+
+void black()  // Special blackout sketch for clearing the canvas
+{
+  for (int column = 0; column < numStrand; column++)
+  {
+    for (int row = 0; row < numLedStrand; row++)
+    {
+      leds[row][column] = CRGB::Black;
+    }
+  }
+  fill_solid (showLeds, numLed, CRGB::Black);
+  FastLED.show();  // FastLED.show used here to prevent checkAndUpdate loops
 }
 
 CHSV twinkle_color( int temperature)
@@ -685,9 +734,9 @@ void pendulum() {
       //hue = 64;
     }
     t += bias;
-    Serial.print("t = ");
-    Serial.println(t);
-    Serial.println();
+    // Serial.print("t = ");
+    // Serial.println(t);
+    // Serial.println();
     spin();
     transform(leds);
     checkAndUpdate();
@@ -815,12 +864,6 @@ void rainbowColumns()
     delay(20);
     checkAndUpdate();
   }
-}
-
-void white()
-{
-  fill_solid (showLeds, numLed, CRGB::White);
-  checkAndUpdate();
 }
 
 void whitePurpleColumns()
