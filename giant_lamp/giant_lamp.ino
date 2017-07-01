@@ -130,6 +130,8 @@ CRGB SparklerColor(int temperature);    // TODO unknown
 #define UP 1
 #define BUTTON_A_PIN 0
 #define BUTTON_B_PIN 1
+#define BUTTON_A_LED_PIN 23
+#define BUTTON_B_LED_PIN 22
 #define BUTTON_DEBOUNCE_INTERVAL 10  // ms
 #define BUTTON_LONG_PRESS_DELAY 1000  // ms
 #define BUTTON_LONG_PRESS_INTERVAL 100  // ms
@@ -176,12 +178,17 @@ void setup() {
 void buttonSetup() {
   pinMode(BUTTON_A_PIN, INPUT_PULLUP);
   pinMode(BUTTON_B_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_A_LED_PIN, OUTPUT);
+  pinMode(BUTTON_B_LED_PIN, OUTPUT);
 
   buttonA.attach(BUTTON_A_PIN);
   buttonB.attach(BUTTON_B_PIN);
 
   buttonA.interval(BUTTON_DEBOUNCE_INTERVAL);
   buttonB.interval(BUTTON_DEBOUNCE_INTERVAL);
+
+  analogWrite(BUTTON_A_LED_PIN, 128);
+  analogWrite(BUTTON_B_LED_PIN, 128);
 }
 
 void loop() {
@@ -216,6 +223,26 @@ void checkAndUpdate() {
     }
   }
 
+  if ( buttonBChanged ) {
+    int buttonBValue = buttonB.read();
+    serial.print("Button B changed to ");
+    serial.println(buttonBValue);
+
+    if ( buttonBValue == DOWN ) {
+      buttonBPressedMillis = 0;
+      buttonBState = DOWN;
+      buttonBPressedTimeStamp = millis();
+
+    } else if (buttonBValue == UP ) {
+      buttonBState = UP;
+      buttonBLongPressState = UP;
+
+      serial.print("Button B held for ");
+      serial.print(buttonBPressedMillis);
+      serial.println("ms");
+    }
+  }
+
   if (buttonAState == DOWN  && buttonALongPressState != DOWN) {
     if ( millis() - buttonAPressedTimeStamp >= BUTTON_LONG_PRESS_DELAY ) {
       buttonALongPressState = DOWN;
@@ -225,10 +252,27 @@ void checkAndUpdate() {
     }
   }
 
+  if (buttonBState == DOWN  && buttonBLongPressState != DOWN) {
+    if ( millis() - buttonBPressedTimeStamp >= BUTTON_LONG_PRESS_DELAY ) {
+      buttonBLongPressState = DOWN;
+      buttonBLongPressedTimeStamp = millis();
+
+      serial.println("Button B was long pressed");
+    }
+  }
+
   if (buttonALongPressState == DOWN) {
     if ( millis() - buttonALongPressedTimeStamp >= BUTTON_LONG_PRESS_INTERVAL ) {
       buttonALongPressedTimeStamp = millis();
       serial.println("Button A long event triggered");
+      //TODO use fucntion poitner for current sketch longpress function on button B??
+    }
+  }
+
+  if (buttonBLongPressState == DOWN) {
+    if ( millis() - buttonBLongPressedTimeStamp >= BUTTON_LONG_PRESS_INTERVAL ) {
+      buttonBLongPressedTimeStamp = millis();
+      serial.println("Button B long event triggered");
       //TODO use fucntion poitner for current sketch longpress function on button B??
     }
   }
