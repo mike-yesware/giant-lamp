@@ -13,6 +13,8 @@
 #include <Bounce2.h>
 #include "palettes.h"
 
+typedef void(*FunctionPointer)();    // function pointer type
+
 // global definitions
 #define numStrip 3          // strips are contiguous physical LED chains
 #define numStrand 6         // strands are the vertical "strands" that make up the chandelier
@@ -42,6 +44,7 @@ void spin();
 void printFFT();
 void fadeleds();
 void fadeTempLeds();
+void fireColumn(uint8_t);
 
 // Program defs
 void twinkle();
@@ -53,16 +56,20 @@ void rainbowColumns();
 void whitePurpleColumns();
 void columnsAndRows();
 void america();
+void fire();
 
 uint8_t brightness = 128;
 uint8_t maxBrightness = 255;
 uint8_t increment = 4;
 uint8_t maxKnob = 255;
-
 uint8_t* currentKnob = &brightness;  // this is a knob pointer that points to the value I want to increment
-typedef void(*FunctionPointer)();    // function pointer type
+
+#define ROTATION_TIME 300000         // ms for auto rotation
+bool rotationMode = 0;               // flag that auto rotation is enabled
+elapsedMillis rotationTimerMillis;   // time since last rotation
+
 bool programChanged;                 // flag that a program change has occured
-#define PROGRAM_COUNT 9              // number of programs in total
+#define PROGRAM_COUNT 10              // number of programs in total
 FunctionPointer currentProgram;      // this is a function pointer that points to the animation I want to run
 int currentProgramIndex;             // Index of the current running program in the programs array
 FunctionPointer programs[PROGRAM_COUNT] = {
@@ -74,7 +81,8 @@ FunctionPointer programs[PROGRAM_COUNT] = {
   rainbowColumns,
   whitePurpleColumns,
   columnsAndRows,
-  america
+  america,
+  fire
 }; // Function pointer array of all programs
 
 CRGB currentColor = CRGB::Green;
@@ -222,12 +230,14 @@ void loop() {
   while ( serial.available() > 0 ) {
     runCommand( serial.read() );
   }
+
   checkAndUpdate();
 
   if ( programChanged ) {
     black();
     programChanged = false;
   }
+
   (*currentProgram)();
 }
 
@@ -280,6 +290,12 @@ void checkAndUpdate() {
       serial.print("Button B held for ");
       serial.print(buttonBPressedMillis);
       serial.println("ms");
+
+      if ( buttonBPressedMillis < BUTTON_LONG_PRESS_DELAY ) {
+        serial.println("Button B short press triggered");
+
+        // TODO PaletteChange
+      }
     }
   }
 
@@ -306,6 +322,8 @@ void checkAndUpdate() {
       buttonABLongPressState = DOWN;
       buttonABLongPressedTimeStamp = millis();
 
+      rotationMode = !rotationMode;
+      rotationTimerMillis = 0;
       serial.println("Both buttons were long pressed");
     }
   }
@@ -326,6 +344,13 @@ void checkAndUpdate() {
       incrementCurrentKnob();
       serial.println("Button B long event triggered");
     }
+  }
+
+  if ( rotationMode && rotationTimerMillis >= ROTATION_TIME ) {
+    rotationTimerMillis = 0;
+
+    changeProgram();
+    // TODO PaletteChange
   }
 
   LEDS.setBrightness(brightness);
@@ -978,4 +1003,60 @@ CRGB SparklerColor(int temperature)
     heatcolor.b = heatramp; // no blue
   }
   return heatcolor;
+}
+
+CRGBPalette16 firePallet = HeatColors_p;
+#define FIRE_COOLING  55
+#define FIRE_SPARKING 120
+
+void fire() {
+  for (uint8_t column = 0; column < numStrand; column++) {
+    fireColumn(column);
+  }
+
+  FastLED.delay(1000/60);
+  checkAndUpdate();
+}
+
+void fireColumn(uint8_t column) {
+  // Array of temperature readings at each simulation cell
+  static byte heat[numStrand][numLedStrand];
+  bool reverseDirection = false;
+
+  random16_add_entropy(random());
+
+  // Step 1.  Cool down every cell a little
+    for( int i = 0; i < numLedStrand; i++) {
+      heat[column][i] = qsub8( heat[column][i],  random8(0, ((FIRE_COOLING * 10) / numLedStrand) + 2));
+    }
+
+    // Step 2.  Heat from each cell drifts 'up' and diffuses a little
+    for( int k= numLedStrand - 1; k >= 2; k--) {
+      heat[column][k] = (heat[column][k - 1] + heat[column][k - 2] + heat[column][k - 2] ) / 3;
+    }
+
+    // Step 3.  Randomly ignite new 'sparks' of heat near the bottom
+    if( random8() < FIRE_SPARKING ) {
+      int y = random8(7);
+      heat[column][y] = qadd8( heat[column][y], random8(160,255) );
+    }
+
+    // Step 4.  Map from heat cells to LED colors
+    for( int j = 0; j < numLedStrand; j++) {
+      // Scale the heat value from 0-255 down to 0-240
+      // for best results with color palettes.
+      byte colorindex = scale8( heat[column][j], 240);
+      CRGB color = ColorFromPalette(firePallet, colorindex);
+      int pixelnumber;
+      if( reverseDirection ) {
+        pixelnumber = (numLedStrand-1) - j;
+      } else {
+        pixelnumber = j;
+      }
+      leds[pixelnumber][column] = color;
+    }
+
+    // Step 5. Transform into columns and show
+    transform(leds);
+    checkAndUpdate();
 }
