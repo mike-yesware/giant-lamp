@@ -212,8 +212,8 @@ unsigned long buttonABLongPressedTimeStamp;
 void setup() {
   buttonSetup();
   
-  currentProgramIndex = 10;   // start on twinkle  |  Note that these need to
-  currentProgram = &artnetDisplay; // start on twinkle  |  stay in sync!!
+  currentProgramIndex = 0;   // start on twinkle  |  Note that these need to
+  currentProgram = &twinkle; // start on twinkle  |  stay in sync!!
 
   AudioMemory(12);
 
@@ -232,7 +232,7 @@ void setup() {
   artnet.begin(mac, ip);
   artnet.setArtDmxCallback(artnetCallback);
 
-  delay(1000); // 1 sec boot delay
+  delay(5000); // 5 sec boot delay
 }
 
 void buttonSetup() {
@@ -605,6 +605,8 @@ void twinkle()
   for ( unsigned int j = 0; j < numLed; j++) {
     showLeds[j] = twinkle_color( heat[j] );
   }
+
+  FastLED.show();
 }
 
 void sparkle() {
@@ -680,8 +682,8 @@ void spectrum() {
     spin();
     transform(tempLeds);
     checkAndUpdate();
-    FastLED.show();
     fadeleds();
+    FastLED.show();
   }
 }
 
@@ -791,8 +793,8 @@ void pendulum() {
     spin();
     transform(leds);
     checkAndUpdate();
-    FastLED.show();
     fadeleds();
+    FastLED.show();
   }
 }
 
@@ -864,6 +866,7 @@ void fireworks() {
   }
   transform(leds);
   fadeleds();
+  FastLED.show();
   delay(50);
 }
 
