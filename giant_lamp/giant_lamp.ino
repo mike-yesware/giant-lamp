@@ -6,6 +6,11 @@
 */
 
 #define USE_OCTOWS2811
+#define ETHERNET_BUFFER 540
+#include <Artnet.h>
+#include <Ethernet.h>
+#include <EthernetUdp.h>
+#include <SPI.h>
 #include <OctoWS2811.h>
 #include <FastLED.h>
 #include <Audio.h>
@@ -57,6 +62,7 @@ void whitePurpleColumns();
 void columnsAndRows();
 void america();
 void fire();
+void artnetDisplay();
 
 uint8_t brightness = 128;
 uint8_t maxBrightness = 255;
@@ -69,7 +75,7 @@ bool rotationMode = 0;               // flag that auto rotation is enabled
 elapsedMillis rotationTimerMillis;   // time since last rotation
 
 bool programChanged;                 // flag that a program change has occured
-#define PROGRAM_COUNT 10              // number of programs in total
+#define PROGRAM_COUNT 11             // number of programs in total
 FunctionPointer currentProgram;      // this is a function pointer that points to the animation I want to run
 int currentProgramIndex;             // Index of the current running program in the programs array
 FunctionPointer programs[PROGRAM_COUNT] = {
@@ -82,7 +88,8 @@ FunctionPointer programs[PROGRAM_COUNT] = {
   whitePurpleColumns,
   columnsAndRows,
   america,
-  fire
+  fire,
+  artnetDisplay
 }; // Function pointer array of all programs
 
 CRGB currentColor = CRGB::Green;
@@ -133,6 +140,21 @@ int timeConstants[numStrand] = {
 #define SPARKLER_CHILL_SPARKING     10
 #define SPARKLER_COOLING            200
 
+// for Arnet
+Artnet artnet;
+const int startUniverse = 0; // CHANGE FOR YOUR SETUP most software this is 1, some software send out artnet first universe as zero.
+const int numberOfChannels = numLedStrip * numStrip * 3; // Total number of channels you want to receive (1 led = 3 channels)
+byte channelBuffer[numberOfChannels]; // Combined universes into a single array
+
+// Check if we got all universes
+const int maxUniverses = numberOfChannels / 512 + ((numberOfChannels % 512) ? 1 : 0);
+bool universesReceived[maxUniverses];
+bool sendFrame = 1;
+int ledPos = 0;
+
+byte ip[] = {192, 168, 0, 10};
+byte mac[] = {0x04, 0xE9, 0xE5, 0x04, 0x86, 0x45};
+
 //Audio library objects
 AudioInputAnalog         adc1(A14);       //xy=99,55
 AudioAnalyzeFFT1024      fft;            //xy=265,75
@@ -145,7 +167,7 @@ AudioConnection          patchCord1(adc1, fft);
 //};
 int frequencyBinsHorizontal[numStrand + 1] = {
   1, 1, 3, 7, 15, 31, 70
-}; // Don't understand the +1 on numStrand, not accounted for in the origional design
+}; // Don't understand the +1 on numStrand, not accounted for in the original design
 
 //define the leds as a matrix for doing animations, then as an array for final display
 CRGB leds[numLedStrand][numStrand];      // Outer array of strands, inner array of LEDs per strand
@@ -189,9 +211,9 @@ unsigned long buttonABLongPressedTimeStamp;
 
 void setup() {
   buttonSetup();
-
-  currentProgramIndex = 0;   // start on twinkle  |  Note that these need to
-  currentProgram = &twinkle; // start on twinkle  |  stay in sync!!
+  
+  currentProgramIndex = 10;   // start on twinkle  |  Note that these need to
+  currentProgram = &artnetDisplay; // start on twinkle  |  stay in sync!!
 
   AudioMemory(12);
 
@@ -206,6 +228,9 @@ void setup() {
   {
     timeConstants[i] += offset;
   }
+
+  artnet.begin(mac, ip);
+  artnet.setArtDmxCallback(artnetCallback);
 
   delay(1000); // 1 sec boot delay
 }
@@ -333,6 +358,7 @@ void checkAndUpdate() {
       buttonALongPressedTimeStamp = millis();
 
       decrementCurrentKnob();
+      LEDS.setBrightness(brightness);
       serial.println("Button A long event triggered");
     }
   }
@@ -342,6 +368,7 @@ void checkAndUpdate() {
       buttonBLongPressedTimeStamp = millis();
 
       incrementCurrentKnob();
+      LEDS.setBrightness(brightness);
       serial.println("Button B long event triggered");
     }
   }
@@ -352,9 +379,6 @@ void checkAndUpdate() {
     changeProgram();
     // TODO PaletteChange
   }
-
-  LEDS.setBrightness(brightness);
-  FastLED.show();
 }
 
 void incrementCurrentKnob() {
@@ -595,6 +619,7 @@ void sparkle() {
       showLeds[j] = twinkle_color( heat[j] );
     }
     checkAndUpdate();
+    FastLED.show();
   }
 }
 
@@ -655,6 +680,7 @@ void spectrum() {
     spin();
     transform(tempLeds);
     checkAndUpdate();
+    FastLED.show();
     fadeleds();
   }
 }
@@ -765,6 +791,7 @@ void pendulum() {
     spin();
     transform(leds);
     checkAndUpdate();
+    FastLED.show();
     fadeleds();
   }
 }
@@ -870,6 +897,7 @@ void glitter() {
     transform(leds);
     fadeleds();
     checkAndUpdate();
+    FastLED.show();
   }
 }
 
@@ -888,6 +916,7 @@ void rainbowColumns()
     transform(leds);
     delay(20);
     checkAndUpdate();
+    FastLED.show();
   }
 }
 
@@ -906,6 +935,7 @@ void whitePurpleColumns()
     transform(leds);
     delay(5);
     checkAndUpdate();
+    FastLED.show();
   }
 }
 
@@ -917,10 +947,12 @@ void columnsAndRows() {
       leds[row][column] = CRGB::White;
       transform(leds);
       checkAndUpdate();
+      FastLED.show();
       //delay(10);
       leds[row][column] = CRGB::Black;
       fill_solid(showLeds, numLed, CRGB::Black);
       checkAndUpdate();
+      FastLED.show();
       //delay(20);
     }
   }
@@ -932,11 +964,13 @@ void columnsAndRows() {
       leds[row][column] = CRGB::White;
       transform(leds);
       checkAndUpdate();
+      FastLED.show();
       //delay(10);
       leds[row][column] = CRGB::Black;
       fill_solid(showLeds, numLed, CRGB::Black);
       //delay(10);
       checkAndUpdate();
+      FastLED.show();
     }
   }
 }
@@ -947,6 +981,7 @@ void america()
 
   random16_add_entropy(random());
   checkAndUpdate();
+  FastLED.show();
 
   //Cool down every cell a little
   for ( int i = 0; i < numLed; i++) {
@@ -975,7 +1010,7 @@ CRGB SparklerColor(int temperature)
   // which can then be easily divided into three
   // equal 'thirds' of 64 units each.
   uint8_t t192 = scale8_video( temperature, 192);
-
+ 
   // calculate a value that ramps up from
   // zero to 255 in each 'third' of the scale.
   uint8_t heatramp = t192 & 0x3F; // 0..63
@@ -1016,6 +1051,7 @@ void fire() {
 
   FastLED.delay(1000/60);
   checkAndUpdate();
+  FastLED.show();
 }
 
 void fireColumn(uint8_t column) {
@@ -1059,4 +1095,71 @@ void fireColumn(uint8_t column) {
     // Step 5. Transform into columns and show
     transform(leds);
     checkAndUpdate();
+    FastLED.show();
+}
+
+void artnetDisplay() {
+  artnet.read();
+}
+
+void artnetCallback(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t* data)
+{
+  sendFrame = 1;
+  ledPos = 0;
+
+  // Store which universe has got in
+  if (universe < maxUniverses)
+    universesReceived[universe] = 1;
+
+  for (int i = 0 ; i < maxUniverses ; i++)
+  {
+    if (universesReceived[i] == 0)
+    {
+      // Serial.println("Broke");
+      sendFrame = 0;
+      break;
+    }
+  }
+
+  // read universe and put into the right part of the display buffer
+  for (int i = 0 ; i < length ; i++)
+  {
+    int bufferIndex = i + ((universe - startUniverse) * length);
+    if (bufferIndex < numberOfChannels) // to verify
+      channelBuffer[bufferIndex] = byte(data[i]);
+  }      
+
+  // send to leds
+  
+  for (int i = 0; i < numLedStrip * numStrip; i++)
+  {
+    // https://docs.google.com/spreadsheets/d/1GOh2TqrGf6v1Wm-PcW-rKaocxsi4zyZKuBk08LY2E3o/edit#gid=0
+    if (i < numLedStrand || i >= 5 * numLedStrand) {
+      ledPos = i;
+    } else if (i >= 1 * numLedStrand && i < 2 * numLedStrand) {
+      ledPos = i + 1 * numLedStrand;
+    } else if (i >= 2 * numLedStrand && i < 3 * numLedStrand) {
+      ledPos = i + 2 * numLedStrand;
+    } else if (i >= 3 * numLedStrand && i < 4 * numLedStrand) {
+      ledPos = i - 2 * numLedStrand;
+    } else if (i >= 4 * numLedStrand && i < 5 * numLedStrand) {
+      ledPos = i - 1 * numLedStrand;
+    }
+    // Put the DMX data into a temp array, ready for flipping the other side of the strip
+    // led[led postion][strip number]
+    // led postion is always 0..max number of leds per strip, so modulo gets us the remainder when going over
+    // diving the position by the total number of strands tells us which strand were on (even if upside down)
+    leds[ledPos % numLedStrand][ledPos / numLedStrand].setRGB(channelBuffer[(i) * 3], channelBuffer[(i * 3) + 1], channelBuffer[(i * 3) + 2]);
+  } 
+  
+  if (sendFrame)
+  {
+    // Flip over the upsidedown LEDs
+    transform(leds);
+    checkAndUpdate();
+    FastLED.show();
+
+    // Reset universeReceived to 0
+    memset(universesReceived, 0, maxUniverses);
+  }
 }
