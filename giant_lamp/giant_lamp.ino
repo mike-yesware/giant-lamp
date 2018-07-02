@@ -157,7 +157,7 @@ byte mac[] = {0x04, 0xE9, 0xE5, 0x04, 0x86, 0x45};
 
 //Audio library objects
 AudioInputAnalog         adc1(A14);       //xy=99,55
-AudioAnalyzeFFT1024      fft;            //xy=265,75
+AudioAnalyzeFFT1024      fft;             //xy=265,75
 AudioConnection          patchCord1(adc1, fft);
 //int frequencyBinsHorizontal[numStrand + 1] = {
 //  1,   1,  1,  1,  1,  1,  2,  2,
@@ -232,7 +232,7 @@ void setup() {
   artnet.begin(mac, ip);
   artnet.setArtDmxCallback(artnetCallback);
 
-  delay(5000); // 5 sec boot delay
+  delay(2500); // 2.5 sec boot delay
 }
 
 void buttonSetup() {
@@ -319,7 +319,7 @@ void checkAndUpdate() {
       if ( buttonBPressedMillis < BUTTON_LONG_PRESS_DELAY ) {
         serial.println("Button B short press triggered");
 
-        // TODO PaletteChange
+        changeProgramToArtnet();
       }
     }
   }
@@ -417,7 +417,7 @@ void decrementCurrentKnob() {
 }
 
 void changeProgram() {
-  if ( currentProgramIndex == PROGRAM_COUNT - 1) {  // Subtract one to account for 0 based arrays
+  if ( currentProgramIndex >= PROGRAM_COUNT - 2) {  // Subtract one to account for 0 based arrays and another to skip artnet
     currentProgramIndex = 0;
   }
   else {
@@ -426,6 +426,11 @@ void changeProgram() {
 
   programChanged = true;
   currentProgram = programs[currentProgramIndex];
+}
+
+void changeProgramToArtnet() {
+  programChanged = true;
+  currentProgram = &artnetDisplay;
 }
 
 void runCommand(char command) {
@@ -1159,6 +1164,8 @@ void artnetCallback(uint16_t universe, uint16_t length, uint8_t sequence, uint8_
   {
     // Flip over the upsidedown LEDs
     transform(leds);
+    
+    // Display
     checkAndUpdate();
     FastLED.show();
 
